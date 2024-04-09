@@ -4,6 +4,7 @@ import Link from 'next/link';
 
 import AcmeLogo from '@/app/ui/acme-logo';
 import { lusitana } from '@/app/ui/fonts';
+import SignupLink from './ui/sinup-Link';
 
 export default function Page() {
   return (
@@ -51,16 +52,3 @@ export default function Page() {
     </main>
   );
 }
-
-interface SignupLinkProps {
-  text: string;
-}
-
-export const SignupLink = ({ text }: SignupLinkProps) => (
-  <Link
-    href="/signup"
-    className="flex items-center gap-5 self-start rounded-lg bg-blue-500 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-blue-400 md:text-base"
-  >
-    <span>{text}</span> <ArrowRightIcon className="w-5 md:w-6" />
-  </Link>
-);
