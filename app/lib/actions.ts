@@ -6,6 +6,9 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { signIn } from '@/auth';
 import { AuthError } from 'next-auth';
+import bcrypt from 'bcrypt';
+import { signOut } from '@/auth';
+import { getUser } from './data';
 
 const FormSchema = z.object({
   id: z.string(),
@@ -21,6 +24,20 @@ const FormSchema = z.object({
   date: z.string(),
 });
 
+const AddUserSchema = z.object({
+  id: z.string(),
+  userName: z.string(),
+  email: z.string().email(),
+  password: z.string().min(6),
+});
+
+const DeleteUserSchema = z.object({
+  id: z.string(),
+  userName: z.string(),
+  email: z.string().email(),
+  password: z.string().min(6),
+});
+
 export type State = {
   errors?: {
     customerId?: string[];
@@ -29,8 +46,18 @@ export type State = {
   };
   message?: string | null;
 };
+export type userState = {
+  errors?: {
+    userName?: string[];
+    email?: string[];
+    pasword?: string[];
+  };
+  message?: string | null;
+};
 
 const CreateInvoice = FormSchema.omit({ id: true, date: true });
+const CreateUser = AddUserSchema.omit({ id: true });
+const DeleteUser = DeleteUserSchema.omit({ id: true });
 
 export async function createInvoice(prevState: State, formData: FormData) {
   // Validate form using Zod
@@ -135,4 +162,83 @@ export async function authenticate(
     }
     throw error;
   }
+}
+
+export async function addUser(prevState: userState, formData: FormData) {
+  const validatedFields = CreateUser.safeParse({
+    userName: formData.get('userName'),
+    email: formData.get('email'),
+    password: formData.get('password'),
+  });
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: 'Missing Fields. Failed to Add User.',
+    };
+  }
+
+  const { userName, email, password } = validatedFields.data;
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  try {
+    await sql`
+        INSERT INTO users (name, email, password)
+        VALUES (${userName}, ${email}, ${hashedPassword})
+      `;
+  } catch (error) {
+    return {
+      message: 'Database Error: Failed to Add User.',
+    };
+  }
+  [];
+
+  revalidatePath('/login');
+  redirect('/login');
+}
+
+export async function deleteUser(prevState: userState, formData: FormData) {
+  const validatedFields = DeleteUser.safeParse({
+    userName: formData.get('userName'),
+    email: formData.get('email'),
+    password: formData.get('password'),
+  });
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: 'Missing Fields. Failed to Add User.',
+    };
+  }
+
+  const { userName, email, password } = validatedFields.data;
+
+  const user = await getUser(email);
+  if (!user) {
+    return {
+      message: 'User not found.',
+      errors: {},
+    };
+  }
+  const passwordsMatch = await bcrypt.compare(password, user.password);
+  const userNameMatch = userName === user.name;
+
+  if (passwordsMatch && userNameMatch) {
+    try {
+      await sql`DELETE FROM users WHERE id = ${user.id}`;
+    } catch (error) {
+      return {
+        message: 'Database error: Failed to delete user.',
+        errors: {},
+      };
+    }
+    await signOut();
+    revalidatePath('/login');
+    redirect('/login');
+  }
+
+  return {
+    message: 'Failed to delete user. Passwords or usernames do not match.',
+    errors: {},
+  };
 }
